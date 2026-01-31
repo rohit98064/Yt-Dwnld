@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Downloader</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+        
+        .input-section {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+        
+        #videoUrl {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        #videoUrl:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        #fetchBtn {
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: transform 0.2s;
+        }
+        
+        #fetchBtn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .video-info {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .thumbnail {
+            width: 100%;
+            max-width: 400px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .video-title {
+            font-size: 1.4em;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        
+        .author {
+            color: #666;
+            margin-bottom: 20px;
+        }
+        
+        .formats {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .format-btn {
+            padding: 12px;
+            background: white;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+        
+        .format-btn:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-3px);
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            display: none;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📥 YouTube Video Downloader</h1>
+        
+        <div class="input-section">
+            <input type="text" id="videoUrl" 
+                   placeholder="Paste YouTube URL here (e.g., https://youtube.com/watch?v=...)">
+            <button id="fetchBtn">Get Video Info</button>
+        </div>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Fetching video information...</p>
+        </div>
+        
+        <div id="videoInfo" class="video-info"></div>
+        <div id="errorContainer"></div>
+    </div>
+
+    <script>
+        document.getElementById('fetchBtn').addEventListener('click', fetchVideoInfo);
+        
+        async function fetchVideoInfo() {
+            const url = document.getElementById('videoUrl').value.trim();
+            const videoInfoDiv = document.getElementById('videoInfo');
+            const errorDiv = document.getElementById('errorContainer');
+            const loadingDiv = document.getElementById('loading');
+            
+            // Clear previous results
+            videoInfoDiv.innerHTML = '';
+            videoInfoDiv.style.display = 'none';
+            errorDiv.innerHTML = '';
+            
+            if (!url) {
+                showError('Please enter a YouTube URL');
+                return;
+            }
+            
+            // Show loading
+            loadingDiv.style.display = 'block';
+            
+            try {
+                // Send request to Python backend
+                const response = await fetch('/get_video_info', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ url: url })
+                });
+                
+                const data = await response.json();
+                
+                // Hide loading
+                loadingDiv.style.display = 'none';
+                
+                if (data.error) {
+                    showError(data.error);
+                    return;
+                }
+                
+                // Display video info
+                displayVideoInfo(data);
+                
+            } catch (error) {
+                loadingDiv.style.display = 'none';
+                showError('Connection error. Make sure backend is running.');
+                console.error('Error:', error);
+            }
+        }
+        
+        function displayVideoInfo(data) {
+            const videoInfoDiv = document.getElementById('videoInfo');
+            
+            let formatsHTML = '';
+            data.formats.forEach(format => {
+                formatsHTML += `
+                    <button class="format-btn" onclick="downloadVideo('${format.itag}', '${format.resolution || format.quality}')">
+                        ${format.resolution || format.quality} - ${format.mime_type.split(';')[0]}
+                        ${format.filesize ? `(${format.filesize})` : ''}
+                    </button>
+                `;
+            });
+            
+            videoInfoDiv.innerHTML = `
+                ${data.thumbnail_url ? `<img src="${data.thumbnail_url}" class="thumbnail" alt="Video Thumbnail">` : ''}
+                <h2 class="video-title">${data.title}</h2>
+                <p class="author">👤 ${data.author}</p>
+                <p>Duration: ${data.length} seconds</p>
+                <p>Views: ${data.views}</p>
+                
+                <h3>Available Formats:</h3>
+                <div class="formats">
+                    ${formatsHTML}
+                </div>
+            `;
+            
+            videoInfoDiv.style.display = 'block';
+        }
+        
+        async function downloadVideo(itag, quality) {
+            const url = document.getElementById('videoUrl').value.trim();
+            
+            // Send download request to backend
+            const response = await fetch('/download', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                    url: url, 
+                    itag: itag,
+                    quality: quality 
+                })
+            });
+            
+            if (response.ok) {
+                // Get filename from response headers
+                const contentDisposition = response.headers.get('content-disposition');
+                let filename = 'video.mp4';
+                
+                if (contentDisposition) {
+                    const match = contentDisposition.match(/filename="(.+)"/);
+                    if (match) filename = match[1];
+                }
+                
+                // Create download link
+                const blob = await response.blob();
+                const downloadUrl = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(downloadUrl);
+            } else {
+                const error = await response.json();
+                showError(error.error || 'Download failed');
+            }
+        }
+        
+        function showError(message) {
+            const errorDiv = document.getElementById('errorContainer');
+            errorDiv.innerHTML = `<div class="error">${message}</div>`;
+        }
+    </script>
+</body>
+</html>
